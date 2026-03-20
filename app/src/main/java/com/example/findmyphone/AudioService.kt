@@ -13,6 +13,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.room.Room
@@ -29,7 +30,6 @@ class AudioService : Service() {
     private val dtwMatcher = DTWMatcher()
     private val TAG = "AudioService"
 
-    // Start with a moderate threshold; we'll tune based on debug
     private var THRESHOLD = 150.0
 
     override fun onCreate() {
@@ -40,22 +40,27 @@ class AudioService : Service() {
         db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "findmyphone.db").build()
 
         serviceScope.launch {
-            // Check total phrases first
-            val allPhrases = db.phraseDao().getAll()
-            sendDebug("Total phrases in DB: ${allPhrases.size}")
-            if (allPhrases.isNotEmpty()) {
-                sendDebug("Active: ${allPhrases.count { it.isActive }}")
-            }
+            try {
+                val allPhrases = db.phraseDao().getAll()
+                showToast("Total phrases: ${allPhrases.size}")
 
-            val templates = loadTemplates()
-            if (templates.isNotEmpty()) {
-                val (id, template) = templates[0]
-                Log.d(TAG, "Loaded template with ${template.size} samples")
-                sendDebug("Loaded template (${template.size} samples)")
-                startListening(template)
-            } else {
-                Log.d(TAG, "No active template found")
-                sendDebug("No template saved")
+                if (allPhrases.isNotEmpty()) {
+                    showToast("Active: ${allPhrases.count { it.isActive }}")
+                }
+
+                val templates = loadTemplates()
+                if (templates.isNotEmpty()) {
+                    val (id, template) = templates[0]
+                    showToast("Loaded template with ${template.size} samples")
+                    Log.d(TAG, "Loaded template with ${template.size} samples")
+                    startListening(template)
+                } else {
+                    showToast("No active template found")
+                    sendDebug("No template saved")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                showToast("Error: ${e.message}")
             }
         }
     }
@@ -66,42 +71,50 @@ class AudioService : Service() {
     }
 
     private fun startListening(template: FloatArray) {
-        val audioRecorder = AudioRecorder()
-        val buffer = mutableListOf<Float>()
-        val templateSize = template.size
-        Log.d(TAG, "Listening, template size = $templateSize")
-        sendDebug("Listening...")
+        try {
+            showToast("Starting audio recorder...")
+            val audioRecorder = AudioRecorder()
+            val buffer = mutableListOf<Float>()
+            val templateSize = template.size
 
-        audioRecorder.startListening { chunk ->
-            if (!isListening) return@startListening
+            showToast("Listening...")
+            sendDebug("Listening...")
 
-            buffer.addAll(chunk.toList())
+            audioRecorder.startListening { chunk ->
+                if (!isListening) return@startListening
 
-            while (buffer.size >= templateSize) {
-                val segment = buffer.take(templateSize).toFloatArray()
-                val distance = dtwMatcher.similarity(template, segment)
-                Log.d(TAG, "DTW distance = $distance")
-                sendDebug("DTW distance = $distance")
+                buffer.addAll(chunk.toList())
 
-                if (distance < THRESHOLD) {
-                    Log.d(TAG, "MATCH! Triggering alarm.")
-                    sendDebug("MATCH! (distance $distance)")
-                    triggerAlarm()
-                    isListening = false
-                    audioRecorder.stopListening()
-                    return@startListening
+                while (buffer.size >= templateSize) {
+                    val segment = buffer.take(templateSize).toFloatArray()
+                    val distance = dtwMatcher.similarity(template, segment)
+                    // Show distance every 10 comparisons to avoid spamming toasts
+                    if (System.currentTimeMillis() % 1000 < 100) {
+                        showToast("DTW: $distance")
+                    }
+                    sendDebug("DTW distance = $distance")
+
+                    if (distance < THRESHOLD) {
+                        showToast("MATCH!")
+                        triggerAlarm()
+                        isListening = false
+                        audioRecorder.stopListening()
+                        return@startListening
+                    }
+
+                    val shift = (templateSize / 3).coerceAtLeast(1)
+                    repeat(shift) { if (buffer.isNotEmpty()) buffer.removeAt(0) }
                 }
-
-                // Shift buffer by 1/3 of template size to avoid missing phrase boundaries
-                val shift = (templateSize / 3).coerceAtLeast(1)
-                repeat(shift) { if (buffer.isNotEmpty()) buffer.removeAt(0) }
             }
-        }
 
-        while (isListening) {
-            Thread.sleep(1000)
+            while (isListening) {
+                Thread.sleep(1000)
+            }
+            audioRecorder.stopListening()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            showToast("Listening error: ${e.message}")
         }
-        audioRecorder.stopListening()
     }
 
     private fun triggerAlarm() {
@@ -134,6 +147,13 @@ class AudioService : Service() {
         mediaPlayer?.stop()
         mediaPlayer?.release()
         mediaPlayer = null
+    }
+
+    private fun showToast(message: String) {
+        // Must run on main thread
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun sendDebug(message: String) {

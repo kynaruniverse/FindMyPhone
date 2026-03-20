@@ -28,7 +28,7 @@ class RecordPhraseActivity : AppCompatActivity() {
     private lateinit var etPhraseName: EditText
     private lateinit var tvStatus: TextView
     private var isRecording = false
-    private val RECORD_DURATION_MS = 3000L // 3 seconds
+    private val RECORD_DURATION_MS = 3000L
     private val sampleRate = 16000
     private var audioRecord: AudioRecord? = null
 
@@ -93,6 +93,7 @@ class RecordPhraseActivity : AppCompatActivity() {
 
             runOnUiThread {
                 tvStatus.text = "Recorded ${recordedShorts.size} samples"
+                Toast.makeText(this@RecordPhraseActivity, "Recorded ${recordedShorts.size} samples", Toast.LENGTH_SHORT).show()
             }
 
             lifecycleScope.launch(Dispatchers.IO) {
@@ -106,7 +107,7 @@ class RecordPhraseActivity : AppCompatActivity() {
                         }
                     }
 
-                    // 2. Insert the new phrase (active by default)
+                    // 2. Insert new phrase
                     val phrase = Phrase(
                         name = etPhraseName.text.toString(),
                         template = template,
@@ -114,7 +115,7 @@ class RecordPhraseActivity : AppCompatActivity() {
                     )
                     db.phraseDao().insert(phrase)
 
-                    // 3. Verify
+                    // 3. Verify active count
                     val activeCount = db.phraseDao().getAllActive().size
                     withContext(Dispatchers.Main) {
                         tvStatus.text = "Phrase saved! (active: $activeCount)"
