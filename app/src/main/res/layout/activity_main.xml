@@ -36,7 +36,8 @@
         android:id="@+id/btnUpgrade"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Upgrade to Premium"/>
+        android:text="Upgrade to Premium"
+        android:visibility="gone"/>
 
     <com.google.android.gms.ads.AdView
         android:id="@+id/adView"
@@ -44,6 +45,18 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         app:adSize="BANNER"
-        app:adUnitId="ca-app-pub-3940256099942544/6300978111"/> <!-- Test Ad Unit ID -->
+        app:adUnitId="ca-app-pub-3940256099942544/6300978111"/>
+
+    <!-- Debug TextView -->
+    <TextView
+        android:id="@+id/tvDebug"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:padding="8dp"
+        android:textSize="12sp"
+        android:textColor="@android:color/black"
+        android:background="#F0F0F0"
+        android:text="Not listening"/>
 
 </LinearLayout>

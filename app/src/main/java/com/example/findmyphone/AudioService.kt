@@ -14,6 +14,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.room.Room
 import com.example.findmyphone.database.AppDatabase
 import kotlinx.coroutines.*
@@ -28,8 +29,8 @@ class AudioService : Service() {
     private val dtwMatcher = DTWMatcher()
     private val TAG = "AudioService"
 
-    // Adjust this threshold based on logs – lower = more strict
-    private var THRESHOLD = 200.0
+    // Start with a moderate threshold; we'll tune based on debug
+    private var THRESHOLD = 150.0
 
     override fun onCreate() {
         super.onCreate()
@@ -43,9 +44,11 @@ class AudioService : Service() {
             if (templates.isNotEmpty()) {
                 val (id, template) = templates[0]
                 Log.d(TAG, "Loaded template with ${template.size} samples")
+                sendDebug("Loaded template (${template.size} samples)")
                 startListening(template)
             } else {
                 Log.d(TAG, "No active template found")
+                sendDebug("No template saved")
             }
         }
     }
@@ -57,42 +60,37 @@ class AudioService : Service() {
 
     private fun startListening(template: FloatArray) {
         val audioRecorder = AudioRecorder()
-        // Buffer to accumulate audio until we have enough for comparison
         val buffer = mutableListOf<Float>()
         val templateSize = template.size
         Log.d(TAG, "Listening, template size = $templateSize")
+        sendDebug("Listening...")
 
         audioRecorder.startListening { chunk ->
             if (!isListening) return@startListening
 
-            // Add new samples to buffer
             buffer.addAll(chunk.toList())
 
-            // When we have at least templateSize samples, take the first templateSize for comparison
             while (buffer.size >= templateSize) {
                 val segment = buffer.take(templateSize).toFloatArray()
                 val distance = dtwMatcher.similarity(template, segment)
                 Log.d(TAG, "DTW distance = $distance")
+                sendDebug("DTW distance = $distance")
 
                 if (distance < THRESHOLD) {
                     Log.d(TAG, "MATCH! Triggering alarm.")
+                    sendDebug("MATCH! (distance $distance)")
                     triggerAlarm()
-                    // Stop listening after trigger to avoid repeated alarms
                     isListening = false
                     audioRecorder.stopListening()
                     return@startListening
                 }
 
-                // Remove the first half (or a third) of the buffer to create overlap
-                // Overlap helps catch the phrase even if it straddles boundaries
-                val shift = templateSize / 3
-                for (i in 0 until shift) {
-                    buffer.removeAt(0)
-                }
+                // Shift buffer by 1/3 of template size to avoid missing phrase boundaries
+                val shift = (templateSize / 3).coerceAtLeast(1)
+                repeat(shift) { if (buffer.isNotEmpty()) buffer.removeAt(0) }
             }
         }
 
-        // Keep service alive while listening
         while (isListening) {
             Thread.sleep(1000)
         }
@@ -100,13 +98,11 @@ class AudioService : Service() {
     }
 
     private fun triggerAlarm() {
-        // Play default system alarm sound
         val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
         mediaPlayer = MediaPlayer.create(this, alarmUri)
         mediaPlayer?.isLooping = true
         mediaPlayer?.start()
 
-        // Vibrate strongly
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val vibratorManager = getSystemService(VibratorManager::class.java)
             vibratorManager.defaultVibrator
@@ -121,7 +117,6 @@ class AudioService : Service() {
             vibrator?.vibrate(5000)
         }
 
-        // Stop after 30 seconds
         serviceScope.launch {
             delay(30000)
             stopAlarm()
@@ -132,6 +127,13 @@ class AudioService : Service() {
         mediaPlayer?.stop()
         mediaPlayer?.release()
         mediaPlayer = null
+    }
+
+    private fun sendDebug(message: String) {
+        val intent = Intent("AudioServiceDebug").apply {
+            putExtra("message", message)
+        }
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }
 
     private fun createNotificationChannel() {
