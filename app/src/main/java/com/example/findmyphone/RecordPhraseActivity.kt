@@ -6,8 +6,6 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -91,33 +89,50 @@ class RecordPhraseActivity : AppCompatActivity() {
                     recordedShorts.add(buffer[i])
                 }
             }
+
             // Convert to float array
             val template = FloatArray(recordedShorts.size) { i ->
                 recordedShorts[i].toFloat() / Short.MAX_VALUE
             }
 
+            // Log sample count
+            runOnUiThread {
+                tvStatus.text = "Recorded ${recordedShorts.size} samples"
+            }
+
             // Save to database
             lifecycleScope.launch(Dispatchers.IO) {
-                val phrase = Phrase(
-                    name = etPhraseName.text.toString(),
-                    template = template,
-                    isActive = true
-                )
-                db.phraseDao().insert(phrase)
+                try {
+                    val phrase = Phrase(
+                        name = etPhraseName.text.toString(),
+                        template = template,
+                        isActive = true
+                    )
+                    db.phraseDao().insert(phrase)
+                    val id = phrase.id // auto-generated
 
-                // Also deactivate any other phrases (simple approach: only one active phrase)
-                val all = db.phraseDao().getAll()
-                for (p in all) {
-                    if (p.id != phrase.id && p.isActive) {
-                        val inactive = p.copy(isActive = false)
-                        db.phraseDao().update(inactive)
+                    // Deactivate any other phrases
+                    val all = db.phraseDao().getAll()
+                    for (p in all) {
+                        if (p.id != id && p.isActive) {
+                            val inactive = p.copy(isActive = false)
+                            db.phraseDao().update(inactive)
+                        }
                     }
-                }
 
-                withContext(Dispatchers.Main) {
-                    tvStatus.text = "Phrase saved!"
-                    Toast.makeText(this@RecordPhraseActivity, "Phrase saved", Toast.LENGTH_SHORT).show()
-                    finish()
+                    // Verify insertion
+                    val afterInsert = db.phraseDao().getAll()
+                    withContext(Dispatchers.Main) {
+                        tvStatus.text = "Phrase saved! (${afterInsert.size} total)"
+                        Toast.makeText(this@RecordPhraseActivity, "Phrase saved (${template.size} samples)", Toast.LENGTH_SHORT).show()
+                        finish()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    withContext(Dispatchers.Main) {
+                        tvStatus.text = "Save failed: ${e.message}"
+                        Toast.makeText(this@RecordPhraseActivity, "Error saving: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
 
