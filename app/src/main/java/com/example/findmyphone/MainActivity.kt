@@ -10,22 +10,16 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
 import androidx.room.Room
-import com.android.billingclient.api.*
 import com.example.findmyphone.database.AppDatabase
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdView
 import com.google.android.gms.ads.MobileAds
-import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var db: AppDatabase
     private lateinit var adView: AdView
-    private lateinit var billingClient: BillingClient
-    private var isPremium = false
-    private val PREMIUM_SKU = "premium_upgrade"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,12 +37,6 @@ class MainActivity : AppCompatActivity() {
         adView = findViewById(R.id.adView)
         loadBannerAd()
 
-        // Initialize Billing
-        setupBilling()
-
-        // Check premium status
-        checkPremiumStatus()
-
         // Request permissions
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 100)
@@ -58,96 +46,13 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnRecord).setOnClickListener { startRecording() }
         findViewById<Button>(R.id.btnStartService).setOnClickListener { startAudioService() }
         findViewById<Button>(R.id.btnStopService).setOnClickListener { stopAudioService() }
-        findViewById<Button>(R.id.btnUpgrade).setOnClickListener { startPurchase() }
+        // Upgrade button hidden for now (we'll add it later)
+        findViewById<Button>(R.id.btnUpgrade).visibility = android.view.View.GONE
     }
 
     private fun loadBannerAd() {
-        if (!isPremium) {
-            val adRequest = AdRequest.Builder().build()
-            adView.loadAd(adRequest)
-        } else {
-            adView.visibility = android.view.View.GONE
-        }
-    }
-
-    private fun setupBilling() {
-        billingClient = BillingClient.newBuilder(this)
-            .setListener { billingResult, purchases ->
-                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
-                    for (purchase in purchases) {
-                        if (purchase.getSku() == PREMIUM_SKU) {
-                            isPremium = true
-                            savePremiumStatus(true)
-                            adView.visibility = android.view.View.GONE
-                            Toast.makeText(this, "Thank you for upgrading!", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-            }
-            .enablePendingPurchases()
-            .build()
-
-        billingClient.startConnection(object : BillingClientStateListener {
-            override fun onBillingSetupFinished(billingResult: BillingResult) {
-                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                    // Query existing purchases asynchronously
-                    billingClient.queryPurchasesAsync(
-                        QueryPurchasesParams.newBuilder()
-                            .setProductType(BillingClient.ProductType.INAPP)
-                            .build()
-                    ) { billingResult, purchasesList ->
-                        if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                            for (purchase in purchasesList) {
-                                if (purchase.getSku() == PREMIUM_SKU) {
-                                    isPremium = true
-                                    savePremiumStatus(true)
-                                    runOnUiThread { adView.visibility = android.view.View.GONE }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            override fun onBillingServiceDisconnected() {
-                // Try to reconnect
-            }
-        })
-    }
-
-    private fun savePremiumStatus(premium: Boolean) {
-        getSharedPreferences("prefs", MODE_PRIVATE).edit().putBoolean("premium", premium).apply()
-    }
-
-    private fun checkPremiumStatus() {
-        isPremium = getSharedPreferences("prefs", MODE_PRIVATE).getBoolean("premium", false)
-        if (isPremium) {
-            adView.visibility = android.view.View.GONE
-        }
-    }
-
-    private fun startPurchase() {
-        if (isPremium) {
-            Toast.makeText(this, "Already premium!", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val skuDetailsParams = SkuDetailsParams.newBuilder()
-            .setSkusList(listOf(PREMIUM_SKU))
-            .setType(BillingClient.ProductType.INAPP)
-            .build()
-
-        billingClient.querySkuDetailsAsync(skuDetailsParams) { billingResult, skuDetailsList ->
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && !skuDetailsList.isNullOrEmpty()) {
-                val skuDetails = skuDetailsList[0]
-                val billingFlowParams = BillingFlowParams.newBuilder()
-                    .setSkuDetails(skuDetails)
-                    .build()
-                billingClient.launchBillingFlow(this@MainActivity, billingFlowParams)
-            } else {
-                Toast.makeText(this@MainActivity, "Failed to load purchase details", Toast.LENGTH_SHORT).show()
-            }
-        }
+        val adRequest = AdRequest.Builder().build()
+        adView.loadAd(adRequest)
     }
 
     private fun startRecording() {
