@@ -6,7 +6,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.media.MediaPlayer
-import android.media.MediaRecorder
+import android.media.RingtoneManager
 import android.os.Build
 import android.os.IBinder
 import android.os.VibrationEffect
@@ -15,10 +15,7 @@ import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import androidx.room.Room
 import com.example.findmyphone.database.AppDatabase
-import com.example.findmyphone.database.Phrase
 import kotlinx.coroutines.*
-import java.io.File
-import java.io.FileInputStream
 
 class AudioService : Service() {
     private val NOTIFICATION_ID = 1001
@@ -49,8 +46,6 @@ class AudioService : Service() {
     private fun startListening(templates: List<Pair<Int, FloatArray>>) {
         // Simplified: In a real app, you'd implement AudioRecord loop and DTW matching
         // Here we'll just simulate detection for demonstration
-        // For actual implementation, use AudioRecord and compare chunks
-        // Placeholder: after 10 seconds, trigger alarm
         Thread.sleep(10000)
         if (isListening) {
             triggerAlarm()
@@ -58,12 +53,13 @@ class AudioService : Service() {
     }
 
     private fun triggerAlarm() {
-        // Play loud sound
-        mediaPlayer = MediaPlayer.create(this, R.raw.alarm_sound)
+        // Play the default system alarm sound
+        val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+        mediaPlayer = MediaPlayer.create(this, alarmUri)
         mediaPlayer?.isLooping = true
         mediaPlayer?.start()
 
-        // Vibrate
+        // Vibrate strongly
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val vibratorManager = getSystemService(VibratorManager::class.java)
             vibratorManager.defaultVibrator
