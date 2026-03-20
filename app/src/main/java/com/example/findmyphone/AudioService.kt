@@ -21,47 +21,55 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.room.Room
 import com.example.findmyphone.database.AppDatabase
 import kotlinx.coroutines.*
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.*
 
 class AudioService : Service() {
     private val NOTIFICATION_ID = 1001
     private val CHANNEL_ID = "audio_service_channel"
-    private var isListening = true
     private lateinit var db: AppDatabase
     private var mediaPlayer: MediaPlayer? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val dtwMatcher = DTWMatcher()
     private val TAG = "AudioService"
-
-    private var THRESHOLD = 150.0
+    private lateinit var logFile: File
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
 
+        // Create log file in internal storage
+        logFile = File(filesDir, "service_log.txt")
+        logFile.writeText("Service started at ${getTime()}\n")
+
         db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "findmyphone.db").build()
 
         serviceScope.launch {
             try {
                 val allPhrases = db.phraseDao().getAll()
+                log("Total phrases: ${allPhrases.size}")
                 showToast("Total phrases: ${allPhrases.size}")
 
                 if (allPhrases.isNotEmpty()) {
+                    log("Active: ${allPhrases.count { it.isActive }}")
                     showToast("Active: ${allPhrases.count { it.isActive }}")
                 }
 
                 val templates = loadTemplates()
                 if (templates.isNotEmpty()) {
                     val (id, template) = templates[0]
+                    log("Loaded template with ${template.size} samples")
                     showToast("Loaded template with ${template.size} samples")
-                    Log.d(TAG, "Loaded template with ${template.size} samples")
-                    startListening(template)
+                    // Start simplified test: wait 5 seconds then trigger alarm
+                    startSimpleTimer()
                 } else {
-                    showToast("No active template found")
-                    sendDebug("No template saved")
+                    log("No active template found")
+                    showToast("No template saved")
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                log("Error in onCreate: ${e.message}\n${e.stackTraceToString()}")
                 showToast("Error: ${e.message}")
             }
         }
@@ -72,50 +80,14 @@ class AudioService : Service() {
         return phrases.map { it.id to it.template }
     }
 
-    private fun startListening(template: FloatArray) {
-        try {
-            showToast("Starting audio recorder...")
-            val audioRecorder = AudioRecorder()
-            val buffer = mutableListOf<Float>()
-            val templateSize = template.size
-
-            showToast("Listening...")
-            sendDebug("Listening...")
-
-            audioRecorder.startListening { chunk ->
-                if (!isListening) return@startListening
-
-                buffer.addAll(chunk.toList())
-
-                while (buffer.size >= templateSize) {
-                    val segment = buffer.take(templateSize).toFloatArray()
-                    val distance = dtwMatcher.similarity(template, segment)
-                    // Show distance occasionally to avoid spam
-                    if (System.currentTimeMillis() % 1000 < 100) {
-                        showToast("DTW: $distance")
-                    }
-                    sendDebug("DTW distance = $distance")
-
-                    if (distance < THRESHOLD) {
-                        showToast("MATCH!")
-                        triggerAlarm()
-                        isListening = false
-                        audioRecorder.stopListening()
-                        return@startListening
-                    }
-
-                    val shift = (templateSize / 3).coerceAtLeast(1)
-                    repeat(shift) { if (buffer.isNotEmpty()) buffer.removeAt(0) }
-                }
-            }
-
-            while (isListening) {
-                Thread.sleep(1000)
-            }
-            audioRecorder.stopListening()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            showToast("Listening error: ${e.message}")
+    private fun startSimpleTimer() {
+        log("Starting simple timer (5 seconds)")
+        showToast("Simple timer started (5s)")
+        serviceScope.launch {
+            delay(5000)
+            log("Timer elapsed, triggering alarm")
+            showToast("Timer elapsed! Triggering alarm")
+            triggerAlarm()
         }
     }
 
@@ -152,11 +124,23 @@ class AudioService : Service() {
     }
 
     private fun showToast(message: String) {
-        // Must run on main thread
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
         }
     }
+
+    private fun log(message: String) {
+        val timestamp = getTime()
+        val line = "$timestamp: $message\n"
+        try {
+            logFile.appendText(line)
+        } catch (e: Exception) {
+            // Ignore
+        }
+        Log.d(TAG, message)
+    }
+
+    private fun getTime(): String = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
 
     private fun sendDebug(message: String) {
         val intent = Intent("AudioServiceDebug").apply {
@@ -182,7 +166,7 @@ class AudioService : Service() {
     private fun createNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Find My Phone")
-            .setContentText("Listening for your phrase...")
+            .setContentText("Simplified test – will trigger in 5s")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .build()
     }
@@ -193,7 +177,6 @@ class AudioService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        isListening = false
         serviceScope.cancel()
         stopAlarm()
     }
