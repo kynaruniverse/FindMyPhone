@@ -43,20 +43,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Buttons
-        findViewById<Button>(R.id.btnRecord).setOnClickListener { startRecording() }
+        findViewById<Button>(R.id.btnRecord).setOnClickListener {
+            startActivity(Intent(this, RecordPhraseActivity::class.java))
+        }
         findViewById<Button>(R.id.btnStartService).setOnClickListener { startAudioService() }
         findViewById<Button>(R.id.btnStopService).setOnClickListener { stopAudioService() }
-        // Upgrade button hidden for now (we'll add it later)
         findViewById<Button>(R.id.btnUpgrade).visibility = android.view.View.GONE
     }
 
     private fun loadBannerAd() {
         val adRequest = AdRequest.Builder().build()
         adView.loadAd(adRequest)
-    }
-
-    private fun startRecording() {
-        Toast.makeText(this, "Recording feature coming soon", Toast.LENGTH_SHORT).show()
     }
 
     private fun startAudioService() {

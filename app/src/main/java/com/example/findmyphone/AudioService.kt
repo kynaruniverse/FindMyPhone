@@ -24,6 +24,8 @@ class AudioService : Service() {
     private lateinit var db: AppDatabase
     private var mediaPlayer: MediaPlayer? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val dtwMatcher = DTWMatcher()
+    private val THRESHOLD = 15.0 // Lower value = more similar; you may need to tune this
 
     override fun onCreate() {
         super.onCreate()
@@ -34,7 +36,11 @@ class AudioService : Service() {
 
         serviceScope.launch {
             val templates = loadTemplates()
-            startListening(templates)
+            if (templates.isNotEmpty()) {
+                startListening(templates[0].second) // Use first active template
+            } else {
+                // No template saved, do nothing or just wait
+            }
         }
     }
 
@@ -43,13 +49,22 @@ class AudioService : Service() {
         return phrases.map { it.id to it.template }
     }
 
-    private fun startListening(templates: List<Pair<Int, FloatArray>>) {
-        // Simplified: In a real app, you'd implement AudioRecord loop and DTW matching
-        // Here we'll just simulate detection for demonstration
-        Thread.sleep(10000)
-        if (isListening) {
-            triggerAlarm()
+    private fun startListening(template: FloatArray) {
+        val audioRecorder = AudioRecorder()
+        audioRecorder.startListening { chunk ->
+            if (isListening) {
+                val distance = dtwMatcher.similarity(template, chunk)
+                if (distance < THRESHOLD) {
+                    triggerAlarm()
+                    // Optionally stop listening after trigger
+                }
+            }
         }
+        // Keep the service alive while listening
+        while (isListening) {
+            Thread.sleep(1000)
+        }
+        audioRecorder.stopListening()
     }
 
     private fun triggerAlarm() {
