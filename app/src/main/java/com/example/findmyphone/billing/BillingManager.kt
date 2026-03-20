@@ -9,7 +9,7 @@ class BillingManager(private val context: Context, private val updateListener: (
         .setListener { billingResult, purchases ->
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
                 for (purchase in purchases) {
-                    if (purchase.sku == "premium_upgrade") {
+                    if (purchase.getSku() == "premium_upgrade") {
                         updateListener(true)
                     }
                 }
@@ -33,10 +33,17 @@ class BillingManager(private val context: Context, private val updateListener: (
     }
 
     private fun queryPurchases() {
-        val purchasesResult = billingClient.queryPurchases(BillingClient.SkuType.INAPP)
-        for (purchase in purchasesResult.purchasesList) {
-            if (purchase.sku == "premium_upgrade") {
-                updateListener(true)
+        billingClient.queryPurchasesAsync(
+            QueryPurchasesParams.newBuilder()
+                .setProductType(BillingClient.ProductType.INAPP)
+                .build()
+        ) { billingResult, purchasesList ->
+            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                for (purchase in purchasesList) {
+                    if (purchase.getSku() == "premium_upgrade") {
+                        updateListener(true)
+                    }
+                }
             }
         }
     }
@@ -44,7 +51,7 @@ class BillingManager(private val context: Context, private val updateListener: (
     fun launchPurchaseFlow(activity: Activity, sku: String) {
         val skuDetailsParams = SkuDetailsParams.newBuilder()
             .setSkusList(listOf(sku))
-            .setType(BillingClient.SkuType.INAPP)
+            .setType(BillingClient.ProductType.INAPP)
             .build()
 
         billingClient.querySkuDetailsAsync(skuDetailsParams) { billingResult, skuDetailsList ->

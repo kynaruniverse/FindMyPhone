@@ -3,28 +3,21 @@ package com.example.findmyphone
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.MediaRecorder
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
-import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.room.Room
+import com.android.billingclient.api.*
 import com.example.findmyphone.database.AppDatabase
-import com.example.findmyphone.database.Phrase
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdView
 import com.google.android.gms.ads.MobileAds
-import com.android.billingclient.api.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileInputStream
 
 class MainActivity : AppCompatActivity() {
 
@@ -82,7 +75,7 @@ class MainActivity : AppCompatActivity() {
             .setListener { billingResult, purchases ->
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
                     for (purchase in purchases) {
-                        if (purchase.sku == PREMIUM_SKU) {
+                        if (purchase.getSku() == PREMIUM_SKU) {
                             isPremium = true
                             savePremiumStatus(true)
                             adView.visibility = android.view.View.GONE
@@ -97,13 +90,20 @@ class MainActivity : AppCompatActivity() {
         billingClient.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(billingResult: BillingResult) {
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                    // Query existing purchases
-                    val purchasesResult = billingClient.queryPurchases(BillingClient.SkuType.INAPP)
-                    for (purchase in purchasesResult.purchasesList) {
-                        if (purchase.sku == PREMIUM_SKU) {
-                            isPremium = true
-                            savePremiumStatus(true)
-                            runOnUiThread { adView.visibility = android.view.View.GONE }
+                    // Query existing purchases asynchronously
+                    billingClient.queryPurchasesAsync(
+                        QueryPurchasesParams.newBuilder()
+                            .setProductType(BillingClient.ProductType.INAPP)
+                            .build()
+                    ) { billingResult, purchasesList ->
+                        if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                            for (purchase in purchasesList) {
+                                if (purchase.getSku() == PREMIUM_SKU) {
+                                    isPremium = true
+                                    savePremiumStatus(true)
+                                    runOnUiThread { adView.visibility = android.view.View.GONE }
+                                }
+                            }
                         }
                     }
                 }
@@ -134,7 +134,7 @@ class MainActivity : AppCompatActivity() {
 
         val skuDetailsParams = SkuDetailsParams.newBuilder()
             .setSkusList(listOf(PREMIUM_SKU))
-            .setType(BillingClient.SkuType.INAPP)
+            .setType(BillingClient.ProductType.INAPP)
             .build()
 
         billingClient.querySkuDetailsAsync(skuDetailsParams) { billingResult, skuDetailsList ->
