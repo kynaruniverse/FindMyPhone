@@ -12,6 +12,7 @@ import android.os.IBinder
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.room.Room
 import com.example.findmyphone.database.AppDatabase
@@ -25,7 +26,10 @@ class AudioService : Service() {
     private var mediaPlayer: MediaPlayer? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val dtwMatcher = DTWMatcher()
-    private val THRESHOLD = 15.0 // Lower value = more similar; you may need to tune this
+    private val TAG = "AudioService"
+
+    // Adjust this threshold based on logs – lower = more strict
+    private var THRESHOLD = 200.0
 
     override fun onCreate() {
         super.onCreate()
@@ -37,9 +41,11 @@ class AudioService : Service() {
         serviceScope.launch {
             val templates = loadTemplates()
             if (templates.isNotEmpty()) {
-                startListening(templates[0].second) // Use first active template
+                val (id, template) = templates[0]
+                Log.d(TAG, "Loaded template with ${template.size} samples")
+                startListening(template)
             } else {
-                // No template saved, do nothing or just wait
+                Log.d(TAG, "No active template found")
             }
         }
     }
@@ -51,16 +57,42 @@ class AudioService : Service() {
 
     private fun startListening(template: FloatArray) {
         val audioRecorder = AudioRecorder()
+        // Buffer to accumulate audio until we have enough for comparison
+        val buffer = mutableListOf<Float>()
+        val templateSize = template.size
+        Log.d(TAG, "Listening, template size = $templateSize")
+
         audioRecorder.startListening { chunk ->
-            if (isListening) {
-                val distance = dtwMatcher.similarity(template, chunk)
+            if (!isListening) return@startListening
+
+            // Add new samples to buffer
+            buffer.addAll(chunk.toList())
+
+            // When we have at least templateSize samples, take the first templateSize for comparison
+            while (buffer.size >= templateSize) {
+                val segment = buffer.take(templateSize).toFloatArray()
+                val distance = dtwMatcher.similarity(template, segment)
+                Log.d(TAG, "DTW distance = $distance")
+
                 if (distance < THRESHOLD) {
+                    Log.d(TAG, "MATCH! Triggering alarm.")
                     triggerAlarm()
-                    // Optionally stop listening after trigger
+                    // Stop listening after trigger to avoid repeated alarms
+                    isListening = false
+                    audioRecorder.stopListening()
+                    return@startListening
+                }
+
+                // Remove the first half (or a third) of the buffer to create overlap
+                // Overlap helps catch the phrase even if it straddles boundaries
+                val shift = templateSize / 3
+                for (i in 0 until shift) {
+                    buffer.removeAt(0)
                 }
             }
         }
-        // Keep the service alive while listening
+
+        // Keep service alive while listening
         while (isListening) {
             Thread.sleep(1000)
         }
@@ -68,7 +100,7 @@ class AudioService : Service() {
     }
 
     private fun triggerAlarm() {
-        // Play the default system alarm sound
+        // Play default system alarm sound
         val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
         mediaPlayer = MediaPlayer.create(this, alarmUri)
         mediaPlayer?.isLooping = true
@@ -89,7 +121,7 @@ class AudioService : Service() {
             vibrator?.vibrate(5000)
         }
 
-        // Stop after 30 seconds (optional)
+        // Stop after 30 seconds
         serviceScope.launch {
             delay(30000)
             stopAlarm()
