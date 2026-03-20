@@ -8,7 +8,9 @@ import android.content.Intent
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -88,7 +90,7 @@ class AudioService : Service() {
                 while (buffer.size >= templateSize) {
                     val segment = buffer.take(templateSize).toFloatArray()
                     val distance = dtwMatcher.similarity(template, segment)
-                    // Show distance every 10 comparisons to avoid spamming toasts
+                    // Show distance occasionally to avoid spam
                     if (System.currentTimeMillis() % 1000 < 100) {
                         showToast("DTW: $distance")
                     }
