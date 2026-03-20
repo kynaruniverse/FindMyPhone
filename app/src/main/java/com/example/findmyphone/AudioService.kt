@@ -40,6 +40,13 @@ class AudioService : Service() {
         db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "findmyphone.db").build()
 
         serviceScope.launch {
+            // Check total phrases first
+            val allPhrases = db.phraseDao().getAll()
+            sendDebug("Total phrases in DB: ${allPhrases.size}")
+            if (allPhrases.isNotEmpty()) {
+                sendDebug("Active: ${allPhrases.count { it.isActive }}")
+            }
+
             val templates = loadTemplates()
             if (templates.isNotEmpty()) {
                 val (id, template) = templates[0]
