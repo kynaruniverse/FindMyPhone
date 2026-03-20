@@ -33,8 +33,8 @@ class BillingManager(private val context: Context, private val updateListener: (
     }
 
     private fun queryPurchases() {
-        val purchases = billingClient.queryPurchases(BillingClient.SkuType.INAPP)
-        for (purchase in purchases.purchasesList) {
+        val purchasesResult = billingClient.queryPurchases(BillingClient.SkuType.INAPP)
+        for (purchase in purchasesResult.purchasesList) {
             if (purchase.sku == "premium_upgrade") {
                 updateListener(true)
             }

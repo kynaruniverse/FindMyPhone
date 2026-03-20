@@ -32,7 +32,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adView: AdView
     private lateinit var billingClient: BillingClient
     private var isPremium = false
-    private val PREMIUM_SKU = "premium_upgrade" // Define your SKU in Google Play Console
+    private val PREMIUM_SKU = "premium_upgrade"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,8 +98,8 @@ class MainActivity : AppCompatActivity() {
             override fun onBillingSetupFinished(billingResult: BillingResult) {
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                     // Query existing purchases
-                    val purchases = billingClient.queryPurchases(BillingClient.SkuType.INAPP)
-                    for (purchase in purchases.purchasesList) {
+                    val purchasesResult = billingClient.queryPurchases(BillingClient.SkuType.INAPP)
+                    for (purchase in purchasesResult.purchasesList) {
                         if (purchase.sku == PREMIUM_SKU) {
                             isPremium = true
                             savePremiumStatus(true)
@@ -151,11 +151,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startRecording() {
-        // Start recording activity/fragment to capture a new phrase
-        // For simplicity, we'll just show a toast and trigger a new activity
-        // In a real app, you'd implement a proper recording UI
         Toast.makeText(this, "Recording feature coming soon", Toast.LENGTH_SHORT).show()
-        // You can add code to record audio, convert to template, and save to database
     }
 
     private fun startAudioService() {
