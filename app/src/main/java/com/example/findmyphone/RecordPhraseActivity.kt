@@ -20,7 +20,6 @@ import com.example.findmyphone.database.Phrase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 class RecordPhraseActivity : AppCompatActivity() {
 
@@ -51,7 +50,6 @@ class RecordPhraseActivity : AppCompatActivity() {
             }
         }
 
-        // Check permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 200)
         }
@@ -77,7 +75,6 @@ class RecordPhraseActivity : AppCompatActivity() {
         isRecording = true
         btnRecord.text = "Stop Recording"
 
-        // Record for duration
         val recordedShorts = mutableListOf<Short>()
         val buffer = ShortArray(bufferSize)
 
@@ -90,40 +87,37 @@ class RecordPhraseActivity : AppCompatActivity() {
                 }
             }
 
-            // Convert to float array
             val template = FloatArray(recordedShorts.size) { i ->
                 recordedShorts[i].toFloat() / Short.MAX_VALUE
             }
 
-            // Log sample count
             runOnUiThread {
                 tvStatus.text = "Recorded ${recordedShorts.size} samples"
             }
 
-            // Save to database
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
+                    // 1. Deactivate all existing phrases
+                    val all = db.phraseDao().getAll()
+                    for (p in all) {
+                        if (p.isActive) {
+                            val inactive = p.copy(isActive = false)
+                            db.phraseDao().update(inactive)
+                        }
+                    }
+
+                    // 2. Insert the new phrase (active by default)
                     val phrase = Phrase(
                         name = etPhraseName.text.toString(),
                         template = template,
                         isActive = true
                     )
                     db.phraseDao().insert(phrase)
-                    val id = phrase.id // auto-generated
 
-                    // Deactivate any other phrases
-                    val all = db.phraseDao().getAll()
-                    for (p in all) {
-                        if (p.id != id && p.isActive) {
-                            val inactive = p.copy(isActive = false)
-                            db.phraseDao().update(inactive)
-                        }
-                    }
-
-                    // Verify insertion
-                    val afterInsert = db.phraseDao().getAll()
+                    // 3. Verify
+                    val activeCount = db.phraseDao().getAllActive().size
                     withContext(Dispatchers.Main) {
-                        tvStatus.text = "Phrase saved! (${afterInsert.size} total)"
+                        tvStatus.text = "Phrase saved! (active: $activeCount)"
                         Toast.makeText(this@RecordPhraseActivity, "Phrase saved (${template.size} samples)", Toast.LENGTH_SHORT).show()
                         finish()
                     }
@@ -131,12 +125,11 @@ class RecordPhraseActivity : AppCompatActivity() {
                     e.printStackTrace()
                     withContext(Dispatchers.Main) {
                         tvStatus.text = "Save failed: ${e.message}"
-                        Toast.makeText(this@RecordPhraseActivity, "Error saving: ${e.message}", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@RecordPhraseActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
                     }
                 }
             }
 
-            // Clean up
             audioRecord?.stop()
             audioRecord?.release()
             audioRecord = null
